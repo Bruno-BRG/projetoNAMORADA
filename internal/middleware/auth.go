@@ -5,129 +5,145 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chari/projetoNAMORADA/internal/database"
-	"github.com/chari/projetoNAMORADA/internal/models"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
-// AuthMiddleware verifica se o usuário está autenticado
-func AuthMiddleware(db *database.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		sessionID, err := c.Cookie("session_id")
-		if err != nil {
-			c.Redirect(http.StatusFound, "/login")
-			c.Abort()
-			return
-		}
+var jwtSecret = []byte("seu-super-secret-jwt-key-aqui") // TODO: mover para env var
 
-		var session models.Session
-		var user models.User
-
-		err = db.QueryRow(`
-			SELECT s.id, s.user_id, s.expires_at, u.id, u.username, u.role 
-			FROM sessions s 
-			JOIN users u ON s.user_id = u.id 
-			WHERE s.id = ? AND s.expires_at > datetime('now')
-		`, sessionID).Scan(
-			&session.ID, &session.UserID, &session.ExpiresAt,
-			&user.ID, &user.Username, &user.Role,
-		)
-
-		if err != nil {
-			c.SetCookie("session_id", "", -1, "/", "", false, true)
-			c.Redirect(http.StatusFound, "/login")
-			c.Abort()
-			return
-		}
-
-		// Renovar sessão se estiver próxima do vencimento
-		if session.ExpiresAt.Sub(time.Now()) < 24*time.Hour {
-			newExpiry := time.Now().Add(7 * 24 * time.Hour)
-			db.Exec("UPDATE sessions SET expires_at = ? WHERE id = ?", newExpiry, sessionID)
-		}
-
-		// Adicionar usuário ao contexto
-		c.Set("user", &user)
-		c.Set("session", &session)
-		c.Next()
-	}
+type Claims struct {
+	UserID   int    `json:"user_id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	jwt.RegisteredClaims
 }
 
-// AdminMiddleware verifica se o usuário é admin
-func AdminMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, exists := c.Get("user")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Usuário não autenticado"})
-			c.Abort()
-			return
-		}
-
-		if user.(*models.User).Role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Acesso negado"})
-			c.Abort()
-			return
-		}
-
-		c.Next()
+// GenerateJWT gera um token JWT para o usuário
+func GenerateJWT(userID int, username, role string) (string, error) {
+	claims := &Claims{
+		UserID:   userID,
+		Username: username,
+		Role:     role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(jwtSecret)
 }
 
-// RateLimitMiddleware controla tentativas por IP
-func RateLimitMiddleware(db *database.DB, maxAttempts int, window time.Duration) gin.HandlerFunc {
+// ValidateJWT valida um token JWT
+func ValidateJWT(tokenString string) (*Claims, error) {
+	claims := &Claims{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !token.Valid {
+		return nil, jwt.ErrTokenMalformed
+	}
+
+	return claims, nil
+}
+
+// AuthMiddleware middleware para autenticação
+func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := getClientIP(c)
-		quizIDStr := c.Param("id")
+		// Tentar pegar token do cookie primeiro
+		tokenString, err := c.Cookie("auth_token")
 
-		if quizIDStr == "" {
-			c.Next()
-			return
-		}
-
-		// Verificar rate limit
-		var attempts int
-		var lastAttempt, resetAt time.Time
-
-		err := db.QueryRow(`
-			SELECT attempts, last_attempt, reset_at 
-			FROM rate_limits 
-			WHERE ip_address = ? AND quiz_id = ?
-		`, ip, quizIDStr).Scan(&attempts, &lastAttempt, &resetAt)
-
-		if err == nil {
-			// Rate limit existe
-			if time.Now().Before(resetAt) && attempts >= maxAttempts {
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"error":    "Muitas tentativas. Tente novamente em alguns minutos.",
-					"reset_at": resetAt,
-				})
+		// Se não encontrar no cookie, tentar no header Authorization
+		if err != nil {
+			authHeader := c.GetHeader("Authorization")
+			if authHeader == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization token required"})
 				c.Abort()
 				return
 			}
 
-			// Reset se o window expirou
-			if time.Now().After(resetAt) {
-				attempts = 0
+			// Extrair token do header "Bearer <token>"
+			parts := strings.Split(authHeader, " ")
+			if len(parts) != 2 || parts[0] != "Bearer" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization format"})
+				c.Abort()
+				return
 			}
+			tokenString = parts[1]
 		}
 
-		c.Set("current_attempts", attempts)
-		c.Set("client_ip", ip)
+		claims, err := ValidateJWT(tokenString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+
+		// Adicionar claims ao contexto
+		c.Set("user_id", claims.UserID)
+		c.Set("username", claims.Username)
+		c.Set("role", claims.Role)
+
 		c.Next()
 	}
 }
 
-// getClientIP obtém o IP real do cliente considerando proxies
-func getClientIP(c *gin.Context) string {
-	// Verificar cabeçalhos de proxy (Cloudflare, etc.)
-	if ip := c.GetHeader("CF-Connecting-IP"); ip != "" {
-		return ip
+// AdminMiddleware middleware para verificar se o usuário é admin
+func AdminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("role")
+		if !exists || role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
-	if ip := c.GetHeader("X-Forwarded-For"); ip != "" {
-		return strings.Split(ip, ",")[0]
+}
+
+// RequireRole middleware para verificar role específico
+func RequireRole(requiredRole string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("role")
+		if !exists || role != requiredRole {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
-	if ip := c.GetHeader("X-Real-IP"); ip != "" {
-		return ip
+}
+
+// CORS middleware para permitir requests do frontend
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Credentials", "true")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Header("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
 	}
-	return c.ClientIP()
+}
+
+// SecurityHeaders adiciona headers de segurança
+func SecurityHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Next()
+	}
 }

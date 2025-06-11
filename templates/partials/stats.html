@@ -1,0 +1,25 @@
+<!-- Estatísticas do usuário -->
+<div class="stat-card">
+    <div class="stat-number">{{.stats.total_questions}}</div>
+    <div class="stat-label">Total de Perguntas</div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-number">{{.stats.available_questions}}</div>
+    <div class="stat-label">🔓 Disponíveis</div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-number">{{.stats.answered_questions}}</div>
+    <div class="stat-label">✅ Respondidas</div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-number">{{.stats.correct_answers}}</div>
+    <div class="stat-label">🎯 Corretas</div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-number">{{printf "%.1f%%" .stats.accuracy}}</div>
+    <div class="stat-label">📊 Precisão</div>
+</div>

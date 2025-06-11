@@ -4,76 +4,73 @@ import (
 	"time"
 )
 
-// User representa um usuário do sistema (você e sua namorada)
+// User representa um usuário do sistema
 type User struct {
-	ID          int        `json:"id" db:"id"`
-	Username    string     `json:"username" db:"username"`
-	Password    string     `json:"-" db:"password_hash"` // nunca exposer a senha no JSON
-	Role        string     `json:"role" db:"role"`       // "admin" ou "user"
-	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
-	LastLoginAt *time.Time `json:"last_login_at" db:"last_login_at"`
-}
-
-// Quiz representa um quiz completo
-type Quiz struct {
-	ID          int        `json:"id" db:"id"`
-	Title       string     `json:"title" db:"title"`
-	Description string     `json:"description" db:"description"`
-	ScheduledAt time.Time  `json:"scheduled_at" db:"scheduled_at"`
-	IsActive    bool       `json:"is_active" db:"is_active"`
-	Reward      string     `json:"reward" db:"reward"`
-	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
-	Questions   []Question `json:"questions,omitempty"`
+	ID       int       `json:"id" db:"id"`
+	Username string    `json:"username" db:"username"`
+	Password string    `json:"-" db:"password"` // Nunca expor senha no JSON
+	Role     string    `json:"role" db:"role"`  // "admin" ou "visitor"
+	CreateAt time.Time `json:"created_at" db:"created_at"`
 }
 
 // Question representa uma pergunta do quiz
 type Question struct {
-	ID      int      `json:"id" db:"id"`
-	QuizID  int      `json:"quiz_id" db:"quiz_id"`
-	Text    string   `json:"text" db:"text"`
-	Options []string `json:"options"` // JSON array no banco
-	Correct int      `json:"correct" db:"correct_option"`
-	Order   int      `json:"order" db:"question_order"`
+	ID            int       `json:"id" db:"id"`
+	Title         string    `json:"title" db:"title"`
+	Description   string    `json:"description" db:"description"`
+	Options       []string  `json:"options"` // JSON array no banco
+	CorrectAnswer string    `json:"correct_answer" db:"correct_answer"`
+	Reward        string    `json:"reward" db:"reward"`
+	ScheduledAt   time.Time `json:"scheduled_at" db:"scheduled_at"`
+	IsActive      bool      `json:"is_active" db:"is_active"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 
-// UserAnswer representa a resposta de um usuário
-type UserAnswer struct {
+// Answer representa uma resposta do usuário
+type Answer struct {
 	ID         int       `json:"id" db:"id"`
 	UserID     int       `json:"user_id" db:"user_id"`
-	QuizID     int       `json:"quiz_id" db:"quiz_id"`
 	QuestionID int       `json:"question_id" db:"question_id"`
-	Answer     int       `json:"answer" db:"selected_option"`
+	Answer     string    `json:"answer" db:"answer"`
 	IsCorrect  bool      `json:"is_correct" db:"is_correct"`
 	AnsweredAt time.Time `json:"answered_at" db:"answered_at"`
 }
 
-// QuizAttempt representa uma tentativa completa de quiz
-type QuizAttempt struct {
-	ID             int       `json:"id" db:"id"`
-	UserID         int       `json:"user_id" db:"user_id"`
-	QuizID         int       `json:"quiz_id" db:"quiz_id"`
-	Score          int       `json:"score" db:"score"`
-	TotalQuestions int       `json:"total_questions" db:"total_questions"`
-	CompletedAt    time.Time `json:"completed_at" db:"completed_at"`
-	IPAddress      string    `json:"ip_address" db:"ip_address"`
+// QuizSession representa uma sessão de quiz
+type QuizSession struct {
+	ID             int        `json:"id" db:"id"`
+	UserID         int        `json:"user_id" db:"user_id"`
+	TotalQuestions int        `json:"total_questions" db:"total_questions"`
+	CorrectAnswers int        `json:"correct_answers" db:"correct_answers"`
+	CompletedAt    *time.Time `json:"completed_at" db:"completed_at"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
 }
 
-// RateLimit para controle de tentativas
-type RateLimit struct {
-	ID          int       `json:"id" db:"id"`
-	IPAddress   string    `json:"ip_address" db:"ip_address"`
-	QuizID      int       `json:"quiz_id" db:"quiz_id"`
-	Attempts    int       `json:"attempts" db:"attempts"`
-	LastAttempt time.Time `json:"last_attempt" db:"last_attempt"`
-	ResetAt     time.Time `json:"reset_at" db:"reset_at"`
+// QuestionWithStatus inclui o status de disponibilidade da pergunta
+type QuestionWithStatus struct {
+	Question
+	IsAvailable bool `json:"is_available"`
+	IsAnswered  bool `json:"is_answered"`
 }
 
-// Session para controle de autenticação
-type Session struct {
-	ID        string    `json:"id" db:"id"`
-	UserID    int       `json:"user_id" db:"user_id"`
-	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	IPAddress string    `json:"ip_address" db:"ip_address"`
-	UserAgent string    `json:"user_agent" db:"user_agent"`
+// LoginRequest representa o payload de login
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+// CreateQuestionRequest representa o payload para criar uma pergunta
+type CreateQuestionRequest struct {
+	Title         string   `json:"title" binding:"required"`
+	Description   string   `json:"description"`
+	Options       []string `json:"options" binding:"required,min=2"`
+	CorrectAnswer string   `json:"correct_answer" binding:"required"`
+	Reward        string   `json:"reward" binding:"required"`
+	ScheduledAt   string   `json:"scheduled_at" binding:"required"` // ISO string, será parseado
+}
+
+// AnswerRequest representa o payload para responder uma pergunta
+type AnswerRequest struct {
+	QuestionID int    `json:"question_id" binding:"required"`
+	Answer     string `json:"answer" binding:"required"`
 }

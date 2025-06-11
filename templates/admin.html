@@ -1,0 +1,260 @@
+{{define "content"}}
+<div class="admin-container">
+    <div class="admin-header">
+        <h2>🔧 Painel Administrativo</h2>
+        <div class="admin-actions">
+            <button 
+                class="btn btn-primary"
+                onclick="showCreateQuestionForm()"
+            >
+                ➕ Nova Pergunta
+            </button>
+            <button 
+                class="btn btn-secondary"
+                hx-get="/api/dashboard"
+                hx-target="#admin-content"
+                hx-swap="innerHTML"
+            >
+                🔄 Atualizar
+            </button>
+        </div>
+    </div>
+
+    <div class="admin-content">
+        <!-- Create Question Form (initially hidden) -->
+        <div id="create-question-form" class="question-form-container" style="display: none;">
+            <div class="form-card">
+                <div class="form-header">
+                    <h3>💝 Criar Nova Pergunta</h3>
+                    <button class="btn-close" onclick="hideCreateQuestionForm()">&times;</button>
+                </div>
+                
+                <form 
+                    id="question-form"
+                    hx-post="/api/questions"
+                    hx-trigger="submit"
+                    hx-target="#form-result"
+                    hx-swap="innerHTML"
+                    hx-on="htmx:afterRequest: handleQuestionFormResponse(event)"
+                >
+                    <div class="form-group">
+                        <label for="title">Título da Pergunta *</label>
+                        <input 
+                            type="text" 
+                            id="title" 
+                            name="title" 
+                            required 
+                            placeholder="Ex: Qual é nossa música favorita?"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Descrição (opcional)</label>
+                        <textarea 
+                            id="description" 
+                            name="description" 
+                            placeholder="Adicione mais contexto ou dicas..."
+                            rows="3"
+                        ></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Opções de Resposta *</label>
+                        <div id="options-container">
+                            <div class="option-input">
+                                <input type="text" name="option" placeholder="Opção 1" required>
+                                <button type="button" class="btn-remove-option" onclick="removeOption(this)" style="display: none;">🗑️</button>
+                            </div>
+                            <div class="option-input">
+                                <input type="text" name="option" placeholder="Opção 2" required>
+                                <button type="button" class="btn-remove-option" onclick="removeOption(this)" style="display: none;">🗑️</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="addOption()">
+                            ➕ Adicionar Opção
+                        </button>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="correct_answer">Resposta Correta *</label>
+                        <input 
+                            type="text" 
+                            id="correct_answer" 
+                            name="correct_answer" 
+                            required 
+                            placeholder="Digite a resposta exata"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reward">Recompensa *</label>
+                        <input 
+                            type="text" 
+                            id="reward" 
+                            name="reward" 
+                            required 
+                            placeholder="Ex: Um beijo extra, um abraço apertado..."
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scheduled_at">Horário de Liberação *</label>
+                        <input 
+                            type="datetime-local" 
+                            id="scheduled_at" 
+                            name="scheduled_at" 
+                            required
+                        >
+                        <small class="form-help">A pergunta só ficará disponível a partir deste horário</small>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">💾 Salvar Pergunta</button>
+                        <button type="button" class="btn btn-secondary" onclick="hideCreateQuestionForm()">
+                            Cancelar
+                        </button>
+                    </div>
+                </form>
+
+                <div id="form-result" class="form-result"></div>
+            </div>
+        </div>
+
+        <!-- Questions List -->
+        <div id="admin-content" class="admin-content-inner">
+            <!-- Admin dashboard content will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<script>
+// Load admin dashboard on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadAdminDashboard();
+});
+
+function loadAdminDashboard() {
+    htmx.ajax('GET', '/api/dashboard', {
+        target: '#admin-content',
+        swap: 'innerHTML'
+    });
+}
+
+function showCreateQuestionForm() {
+    document.getElementById('create-question-form').style.display = 'block';
+    // Set default datetime to current time
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('scheduled_at').value = now.toISOString().slice(0, 16);
+}
+
+function hideCreateQuestionForm() {
+    document.getElementById('create-question-form').style.display = 'none';
+    document.getElementById('question-form').reset();
+    document.getElementById('form-result').innerHTML = '';
+    resetOptionsContainer();
+}
+
+function addOption() {
+    const container = document.getElementById('options-container');
+    const optionCount = container.children.length;
+    
+    const optionDiv = document.createElement('div');
+    optionDiv.className = 'option-input';
+    optionDiv.innerHTML = `
+        <input type="text" name="option" placeholder="Opção ${optionCount + 1}" required>
+        <button type="button" class="btn-remove-option" onclick="removeOption(this)">🗑️</button>
+    `;
+    
+    container.appendChild(optionDiv);
+    updateRemoveButtons();
+}
+
+function removeOption(button) {
+    const container = document.getElementById('options-container');
+    if (container.children.length > 2) {
+        button.parentElement.remove();
+        updateRemoveButtons();
+        updateOptionPlaceholders();
+    }
+}
+
+function updateRemoveButtons() {
+    const container = document.getElementById('options-container');
+    const removeButtons = container.querySelectorAll('.btn-remove-option');
+    
+    removeButtons.forEach(button => {
+        button.style.display = container.children.length > 2 ? 'inline-block' : 'none';
+    });
+}
+
+function updateOptionPlaceholders() {
+    const container = document.getElementById('options-container');
+    const inputs = container.querySelectorAll('input[name="option"]');
+    
+    inputs.forEach((input, index) => {
+        input.placeholder = `Opção ${index + 1}`;
+    });
+}
+
+function resetOptionsContainer() {
+    const container = document.getElementById('options-container');
+    container.innerHTML = `
+        <div class="option-input">
+            <input type="text" name="option" placeholder="Opção 1" required>
+            <button type="button" class="btn-remove-option" onclick="removeOption(this)" style="display: none;">🗑️</button>
+        </div>
+        <div class="option-input">
+            <input type="text" name="option" placeholder="Opção 2" required>
+            <button type="button" class="btn-remove-option" onclick="removeOption(this)" style="display: none;">🗑️</button>
+        </div>
+    `;
+}
+
+function handleQuestionFormResponse(event) {
+    if (event.detail.xhr.status === 201) {
+        showToast('Pergunta criada com sucesso! 🎉', 'success');
+        hideCreateQuestionForm();
+        loadAdminDashboard();
+    } else {
+        const response = JSON.parse(event.detail.xhr.responseText);
+        document.getElementById('form-result').innerHTML = 
+            `<div class="alert alert-error">${response.error}</div>`;
+    }
+}
+
+// Override form submission to collect options properly
+document.getElementById('question-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const options = [];
+    const optionInputs = document.querySelectorAll('input[name="option"]');
+    
+    optionInputs.forEach(input => {
+        if (input.value.trim()) {
+            options.push(input.value.trim());
+        }
+    });
+    
+    const questionData = {
+        title: formData.get('title'),
+        description: formData.get('description'),
+        options: options,
+        correct_answer: formData.get('correct_answer'),
+        reward: formData.get('reward'),
+        scheduled_at: new Date(formData.get('scheduled_at')).toISOString()
+    };
+    
+    // Use HTMX to submit the JSON data
+    htmx.ajax('POST', '/api/questions', {
+        target: '#form-result',
+        swap: 'innerHTML',
+        values: JSON.stringify(questionData),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
+});
+</script>
+{{end}}

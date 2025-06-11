@@ -1,0 +1,60 @@
+<!-- Lista de perguntas disponíveis -->
+{{range .questions}}
+<div class="question-card fade-in">
+    <div class="question-title">{{.Title}}</div>
+    
+    {{if .Description}}
+    <div class="question-description">{{.Description}}</div>
+    {{end}}
+    
+    <div class="question-meta">
+        <div class="question-time">
+            📅 Disponível desde: {{.ScheduledAt.Format "15:04 - 02/01/2006"}}
+        </div>
+        
+        <div class="question-status 
+            {{if .IsAnswered}}
+                {{if .IsCorrect}}status-correct{{else}}status-answered{{end}}
+            {{else if .IsAvailable}}
+                status-available
+            {{else}}
+                status-locked
+            {{end}}">
+            
+            {{if .IsAnswered}}
+                {{if .IsCorrect}}
+                    ✅ Correta!
+                {{else}}
+                    ❌ Incorreta
+                {{end}}
+            {{else if .IsAvailable}}
+                🔓 Disponível
+            {{else}}
+                🔒 Aguarde...
+            {{end}}
+        </div>
+    </div>
+    
+    {{if and .IsAvailable (not .IsAnswered)}}
+    <div class="question-actions">
+        <button class="btn btn-primary" 
+                onclick="openAnswerModal({{.ID}})">
+            💕 Responder
+        </button>
+    </div>
+    {{end}}
+    
+    {{if and .IsAnswered .IsCorrect}}
+    <div class="reward-section">
+        <div class="reward-badge">🎁 Recompensa</div>
+        <div class="reward-text">{{.Reward}}</div>
+    </div>
+    {{end}}
+</div>
+{{else}}
+<div class="empty-state">
+    <div class="empty-icon">💝</div>
+    <h3>Ainda não há perguntas disponíveis</h3>
+    <p>Aguarde, novas perguntas serão liberadas ao longo do dia!</p>
+</div>
+{{end}}

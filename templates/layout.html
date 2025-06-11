@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - Quiz do Amor 💕</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">💕 Quiz do Amor</h1>
+                {{if .User}}
+                <div class="user-info">
+                    <span class="username">Olá, {{.User.Username}}!</span>
+                    <button 
+                        class="btn btn-logout"
+                        hx-post="/api/logout"
+                        hx-trigger="click"
+                        hx-swap="none"
+                        hx-on="htmx:afterRequest: if(event.detail.successful) window.location.href='/'"
+                    >
+                        Sair
+                    </button>
+                </div>
+                {{end}}
+            </div>
+        </header>
+
+        <main class="main-content">
+            {{template "content" .}}
+        </main>
+
+        <footer class="footer">
+            <p>Feito com 💖 para o Dia dos Namorados • {{.Year}}</p>
+        </footer>
+    </div>
+
+    <!-- Loading indicator -->
+    <div id="loading" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="heart-spinner">💕</div>
+            <p>Carregando...</p>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

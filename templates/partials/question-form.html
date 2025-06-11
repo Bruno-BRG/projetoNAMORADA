@@ -1,0 +1,102 @@
+<!-- Formulário para responder pergunta -->
+<form hx-post="/api/questions/answer" 
+      hx-target="#answer-result"
+      hx-swap="innerHTML"
+      hx-on="htmx:afterRequest: if(event.detail.successful) closeAnswerModal(); location.reload()">
+      
+    <div class="question-form">
+        <h4>{{.question.Title}}</h4>
+        
+        {{if .question.Description}}
+        <p class="question-description">{{.question.Description}}</p>
+        {{end}}
+        
+        <input type="hidden" name="question_id" value="{{.question.ID}}">
+        
+        <div class="form-group">
+            <label class="form-label">Escolha sua resposta:</label>
+            <div class="options-list">
+                {{range $index, $option := .question.Options}}
+                <label class="option-label">
+                    <input type="radio" 
+                           name="answer" 
+                           value="{{$option}}" 
+                           required
+                           class="option-radio">
+                    <span class="option-text">{{$option}}</span>
+                </label>
+                {{end}}
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <button type="button" 
+                    class="btn btn-secondary" 
+                    onclick="closeAnswerModal()">
+                Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">
+                💕 Enviar Resposta
+            </button>
+        </div>
+    </div>
+</form>
+
+<div id="answer-result"></div>
+
+<style>
+.question-form {
+    padding: 20px 0;
+}
+
+.options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 15px 0;
+}
+
+.option-label {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    border: 2px solid #e1e8ed;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.option-label:hover {
+    border-color: #667eea;
+    background: #f8f9ff;
+}
+
+.option-label:has(input:checked) {
+    border-color: #667eea;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+}
+
+.option-radio {
+    margin-right: 12px;
+}
+
+.option-text {
+    flex: 1;
+    font-weight: 500;
+}
+
+.form-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: flex-end;
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid #e1e8ed;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+</style>
