@@ -1,0 +1,293 @@
+{{define "content"}}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center space-x-4 mb-4">
+            <a href="/admin" class="text-white/60 hover:text-white transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+            </a>
+            <h1 class="text-3xl font-bold text-white">💕 Criar Novo Quiz</h1>
+        </div>
+        <p class="text-white/80">Crie um quiz especial para testar o conhecimento sobre o relacionamento</p>
+    </div>
+
+    <!-- Quiz Form -->
+    <div x-data="quizCreator()" class="space-y-8">
+        
+        <!-- Basic Info -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 love-shadow">
+            <h2 class="text-xl font-semibold text-white mb-6 flex items-center">
+                📝 Informações Básicas
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="title" class="block text-sm font-medium text-white mb-2">
+                        Título do Quiz *
+                    </label>
+                    <input type="text" 
+                           id="title" 
+                           x-model="quiz.title"
+                           class="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-love-pink focus:border-transparent transition-all"
+                           placeholder="Ex: Nosso Primeiro Encontro"
+                           required>
+                </div>
+                
+                <div>
+                    <label for="scheduled_at" class="block text-sm font-medium text-white mb-2">
+                        Data e Hora de Liberação *
+                    </label>
+                    <input type="datetime-local" 
+                           id="scheduled_at" 
+                           x-model="quiz.scheduled_at"
+                           class="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-love-pink focus:border-transparent transition-all"
+                           required>
+                </div>
+            </div>
+            
+            <div class="mt-6">
+                <label for="description" class="block text-sm font-medium text-white mb-2">
+                    Descrição
+                </label>
+                <textarea id="description" 
+                          x-model="quiz.description"
+                          rows="3"
+                          class="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-love-pink focus:border-transparent transition-all resize-none"
+                          placeholder="Descreva o tema do quiz..."></textarea>
+            </div>
+            
+            <div class="mt-6">
+                <label for="reward" class="block text-sm font-medium text-white mb-2">
+                    Recompensa por Acertar Tudo 🎁
+                </label>
+                <input type="text" 
+                       id="reward" 
+                       x-model="quiz.reward"
+                       class="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-love-pink focus:border-transparent transition-all"
+                       placeholder="Ex: Jantar romântico no nosso restaurante favorito">
+            </div>
+        </div>
+
+        <!-- Questions -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 love-shadow">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-semibold text-white flex items-center">
+                    ❓ Perguntas
+                </h2>
+                <button @click="addQuestion()" 
+                        class="love-gradient text-white px-4 py-2 rounded-lg font-medium hover:opacity-90 transition-all flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Adicionar Pergunta
+                </button>
+            </div>
+            
+            <div x-show="quiz.questions.length === 0" class="text-center py-8">
+                <div class="text-4xl mb-4">🤔</div>
+                <p class="text-white/60 mb-4">Nenhuma pergunta adicionada ainda</p>
+                <button @click="addQuestion()" 
+                        class="love-gradient text-white px-6 py-3 rounded-lg font-medium hover:opacity-90 transition-all">
+                    Criar Primeira Pergunta
+                </button>
+            </div>
+            
+            <div class="space-y-6">
+                <template x-for="(question, index) in quiz.questions" :key="index">
+                    <div class="bg-white/5 rounded-xl p-6 border border-white/10">
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 class="text-lg font-medium text-white" x-text="`Pergunta ${index + 1}`"></h3>
+                            <button @click="removeQuestion(index)" 
+                                    class="text-red-400 hover:text-red-300 transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-white/80 mb-2">
+                                    Texto da Pergunta *
+                                </label>
+                                <textarea x-model="question.text"
+                                          rows="2"
+                                          class="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-love-pink focus:border-transparent transition-all resize-none"
+                                          placeholder="Digite sua pergunta..."
+                                          required></textarea>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-white/80 mb-2">
+                                    Opções de Resposta *
+                                </label>
+                                <div class="space-y-3">
+                                    <template x-for="(option, optIndex) in question.options" :key="optIndex">
+                                        <div class="flex items-center space-x-3">
+                                            <input type="radio" 
+                                                   :name="`correct-${index}`"
+                                                   :value="optIndex"
+                                                   x-model.number="question.correct"
+                                                   class="text-love-pink focus:ring-love-pink">
+                                            <input type="text" 
+                                                   x-model="question.options[optIndex]"
+                                                   class="flex-1 px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-love-pink focus:border-transparent transition-all"
+                                                   :placeholder="`Opção ${optIndex + 1}`"
+                                                   required>
+                                            <button @click="removeOption(index, optIndex)" 
+                                                    x-show="question.options.length > 2"
+                                                    class="text-red-400 hover:text-red-300 transition-colors">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </template>
+                                </div>
+                                
+                                <button @click="addOption(index)" 
+                                        x-show="question.options.length < 6"
+                                        class="mt-3 bg-white/10 hover:bg-white/20 text-white/80 px-3 py-2 rounded-lg text-sm transition-all flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                                    </svg>
+                                    Adicionar Opção
+                                </button>
+                                
+                                <p class="text-white/50 text-xs mt-2">
+                                    💡 Selecione a opção correta clicando no botão de rádio
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex justify-between items-center">
+            <a href="/admin" 
+               class="bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-lg transition-all flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+                Cancelar
+            </a>
+            
+            <button @click="saveQuiz()" 
+                    :disabled="!isValid() || saving"
+                    :class="(!isValid() || saving) ? 
+                           'bg-gray-500/50 text-gray-300 cursor-not-allowed' : 
+                           'love-gradient hover:opacity-90'"
+                    class="text-white px-8 py-3 rounded-lg font-semibold transition-all flex items-center">
+                <span x-show="!saving">
+                    Salvar Quiz 🚀
+                </span>
+                <span x-show="saving" class="flex items-center">
+                    <div class="spinner mr-2"></div>
+                    Salvando...
+                </span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function quizCreator() {
+        return {
+            quiz: {
+                title: '',
+                description: '',
+                scheduled_at: '',
+                reward: '',
+                questions: []
+            },
+            saving: false,
+
+            init() {
+                // Set minimum datetime to current time
+                const now = new Date();
+                const offset = now.getTimezoneOffset() * 60000;
+                const localISOTime = (new Date(now - offset)).toISOString().slice(0, 16);
+                this.quiz.scheduled_at = localISOTime;
+            },
+
+            addQuestion() {
+                this.quiz.questions.push({
+                    text: '',
+                    options: ['', ''],
+                    correct: 0
+                });
+            },
+
+            removeQuestion(index) {
+                this.quiz.questions.splice(index, 1);
+            },
+
+            addOption(questionIndex) {
+                this.quiz.questions[questionIndex].options.push('');
+            },
+
+            removeOption(questionIndex, optionIndex) {
+                const question = this.quiz.questions[questionIndex];
+                question.options.splice(optionIndex, 1);
+                
+                // Adjust correct answer if needed
+                if (question.correct >= optionIndex && question.correct > 0) {
+                    question.correct--;
+                }
+            },
+
+            isValid() {
+                if (!this.quiz.title || !this.quiz.scheduled_at || this.quiz.questions.length === 0) {
+                    return false;
+                }
+
+                return this.quiz.questions.every(q => {
+                    return q.text && 
+                           q.options.length >= 2 && 
+                           q.options.every(opt => opt.trim() !== '') &&
+                           q.correct >= 0 && 
+                           q.correct < q.options.length;
+                });
+            },
+
+            async saveQuiz() {
+                if (!this.isValid()) return;
+
+                this.saving = true;
+                
+                try {
+                    const response = await fetch('/admin/quiz/create', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(this.quiz)
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showToast('Quiz criado com sucesso!', 'success');
+                        setTimeout(() => {
+                            window.location.href = '/admin';
+                        }, 1000);
+                    } else {
+                        showToast(data.error || 'Erro ao criar quiz', 'error');
+                    }
+                } catch (error) {
+                    showToast('Erro de conexão', 'error');
+                } finally {
+                    this.saving = false;
+                }
+            }
+        };
+    }
+</script>
+{{end}}
+
+{{template "base.html" .}}

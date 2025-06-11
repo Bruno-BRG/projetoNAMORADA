@@ -1,0 +1,257 @@
+{{define "content"}}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    
+    <!-- Quiz Header -->
+    <div class="text-center mb-8">
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 love-shadow">
+            <h1 class="text-3xl md:text-4xl font-bold text-white mb-2">{{.quiz.Title}}</h1>
+            <p class="text-white/80 mb-4">{{.quiz.Description}}</p>
+            
+            {{if .quiz.Reward}}
+            <div class="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4 max-w-md mx-auto">
+                <div class="flex items-center justify-center text-yellow-200 text-sm mb-1">
+                    <span class="mr-2">🎁</span>
+                    <span class="font-medium">Recompensa por acertar tudo:</span>
+                </div>
+                <p class="text-yellow-100 font-medium">{{.quiz.Reward}}</p>
+            </div>
+            {{end}}
+        </div>
+    </div>
+
+    <!-- Quiz Form -->
+    <div x-data="quizApp()" class="space-y-6">
+        <!-- Progress Bar -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-white/80 text-sm">Progresso</span>
+                <span class="text-white/80 text-sm" x-text="`${currentQuestion + 1} de {{len .quiz.Questions}}`"></span>
+            </div>
+            <div class="w-full bg-white/20 rounded-full h-2">
+                <div class="bg-gradient-to-r from-love-pink to-love-red h-2 rounded-full transition-all duration-500 ease-out"
+                     :style="`width: ${((currentQuestion + 1) / {{len .quiz.Questions}}) * 100}%`"></div>
+            </div>
+        </div>
+
+        <!-- Questions -->
+        {{range $index, $question := .quiz.Questions}}
+        <div x-show="currentQuestion === {{$index}}" 
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 transform translate-x-full"
+             x-transition:enter-end="opacity-100 transform translate-x-0"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100 transform translate-x-0"
+             x-transition:leave-end="opacity-0 transform -translate-x-full"
+             class="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 love-shadow">
+            
+            <div class="mb-6">
+                <span class="bg-love-pink/20 text-love-pink px-3 py-1 rounded-full text-sm font-medium">
+                    Pergunta {{$index | add1}}
+                </span>
+            </div>
+            
+            <h2 class="text-2xl font-bold text-white mb-8">{{.Text}}</h2>
+            
+            <div class="space-y-4">
+                {{range $optIndex, $option := .Options}}
+                <label class="group cursor-pointer">
+                    <input type="radio" 
+                           name="question-{{$question.ID}}" 
+                           value="{{$optIndex}}"
+                           x-model="answers[{{$question.ID}}]"
+                           class="sr-only">
+                    <div class="flex items-center p-4 rounded-xl border-2 transition-all duration-200"
+                         :class="answers[{{$question.ID}}] == {{$optIndex}} ? 
+                                'bg-love-pink/20 border-love-pink text-white' : 
+                                'bg-white/5 border-white/20 text-white/80 hover:bg-white/10 hover:border-white/40'">
+                        <div class="w-4 h-4 rounded-full border-2 mr-4 flex-shrink-0 flex items-center justify-center"
+                             :class="answers[{{$question.ID}}] == {{$optIndex}} ? 
+                                    'border-love-pink bg-love-pink' : 
+                                    'border-white/40'">
+                            <div class="w-2 h-2 rounded-full bg-white"
+                                 x-show="answers[{{$question.ID}}] == {{$optIndex}}"></div>
+                        </div>
+                        <span class="flex-1">{{$option}}</span>
+                    </div>
+                </label>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+
+        <!-- Navigation -->
+        <div class="flex justify-between items-center">
+            <button @click="previousQuestion()" 
+                    x-show="currentQuestion > 0"
+                    class="bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-lg transition-all flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+                Anterior
+            </button>
+            
+            <div class="flex-1"></div>
+            
+            <button @click="nextQuestion()" 
+                    x-show="currentQuestion < {{len .quiz.Questions}} - 1"
+                    :disabled="!answers[questions[currentQuestion].id]"
+                    :class="!answers[questions[currentQuestion].id] ? 
+                           'bg-gray-500/50 text-gray-300 cursor-not-allowed' : 
+                           'love-gradient hover:opacity-90'"
+                    class="text-white px-6 py-3 rounded-lg transition-all flex items-center">
+                Próxima
+                <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+            </button>
+            
+            <button @click="submitQuiz()" 
+                    x-show="currentQuestion === {{len .quiz.Questions}} - 1"
+                    :disabled="!answers[questions[currentQuestion].id] || submitting"
+                    :class="(!answers[questions[currentQuestion].id] || submitting) ? 
+                           'bg-gray-500/50 text-gray-300 cursor-not-allowed' : 
+                           'love-gradient hover:opacity-90'"
+                    class="text-white px-8 py-3 rounded-lg transition-all flex items-center font-semibold">
+                <span x-show="!submitting">
+                    Finalizar Quiz 🚀
+                </span>
+                <span x-show="submitting" class="flex items-center">
+                    <div class="spinner mr-2"></div>
+                    Enviando...
+                </span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Results Modal -->
+    <div x-show="showResults" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+         style="display: none;">
+        
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 love-shadow max-w-md w-full"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 transform scale-90"
+             x-transition:enter-end="opacity-100 transform scale-100">
+            
+            <div class="text-center">
+                <div class="text-6xl mb-4" x-text="results.perfect_score ? '🏆' : (results.percentage >= 70 ? '🎉' : '😅')"></div>
+                
+                <h3 class="text-2xl font-bold text-white mb-2">Quiz Finalizado!</h3>
+                
+                <div class="bg-white/10 rounded-lg p-4 mb-6">
+                    <div class="text-3xl font-bold text-white mb-2" x-text="`${results.score}/${results.total}`"></div>
+                    <div class="text-white/80" x-text="`${Math.round(results.percentage)}% de acertos`"></div>
+                </div>
+                
+                <div x-show="results.perfect_score" class="bg-green-500/20 border border-green-500/30 rounded-lg p-4 mb-6">
+                    <div class="text-green-200 font-medium mb-2">🎁 Parabéns! Você ganhou:</div>
+                    <div class="text-green-100" x-text="results.reward"></div>
+                </div>
+                
+                <div x-show="!results.perfect_score && results.percentage >= 70" class="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4 mb-6">
+                    <div class="text-yellow-200 text-sm">
+                        Boa tentativa! Você quase conseguiu a recompensa especial! 💪
+                    </div>
+                </div>
+                
+                <div x-show="results.percentage < 70" class="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 mb-6">
+                    <div class="text-blue-200 text-sm">
+                        Não desanime! O importante é o amor que temos. 💕
+                    </div>
+                </div>
+                
+                <button @click="goHome()" 
+                        class="w-full love-gradient text-white font-semibold py-3 px-4 rounded-lg hover:opacity-90 transition-all">
+                    Voltar ao Início
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function quizApp() {
+        return {
+            currentQuestion: 0,
+            answers: {},
+            questions: [
+                {{range .quiz.Questions}}
+                { id: {{.ID}}, text: "{{.Text}}" },
+                {{end}}
+            ],
+            submitting: false,
+            showResults: false,
+            results: {},
+
+            nextQuestion() {
+                if (this.currentQuestion < this.questions.length - 1) {
+                    this.currentQuestion++;
+                }
+            },
+
+            previousQuestion() {
+                if (this.currentQuestion > 0) {
+                    this.currentQuestion--;
+                }
+            },
+
+            async submitQuiz() {
+                this.submitting = true;
+                
+                try {
+                    const response = await fetch('/quiz/{{.quiz.ID}}/submit', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(this.answers)
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.results = data;
+                        this.showResults = true;
+                    } else {
+                        showToast(data.error || 'Erro ao enviar quiz', 'error');
+                    }
+                } catch (error) {
+                    showToast('Erro de conexão', 'error');
+                } finally {
+                    this.submitting = false;
+                }
+            },
+
+            goHome() {
+                window.location.href = '/';
+            }
+        };
+    }
+
+    // Add helper for template
+    Alpine.store('helpers', {
+        add1: (num) => num + 1
+    });
+</script>
+
+<style>
+    /* Custom radio button animation */
+    input[type="radio"]:checked + div {
+        animation: pulse 0.3s ease-in-out;
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+        100% { transform: scale(1); }
+    }
+</style>
+{{end}}
+
+{{template "base.html" .}}
