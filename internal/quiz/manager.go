@@ -19,17 +19,17 @@ func NewQuizManager(db *sql.DB) *QuizManager {
 
 // GetAvailableQuiz retorna o quiz atual disponível baseado no horário
 func (qm *QuizManager) GetAvailableQuiz() (*models.Question, error) {
-	now := time.Now()
+	now := time.Now().UTC() // FIX: Usar UTC para consistência
 	var question models.Question
 	var optionsJSON string
 
 	err := qm.db.QueryRow(`
 		SELECT id, title, content, options, correct_answer, reward, scheduled_at 
 		FROM questions 
-		WHERE scheduled_at <= ? AND is_active = 1
+		WHERE datetime(scheduled_at) <= datetime(?)
 		ORDER BY scheduled_at DESC 
 		LIMIT 1
-	`, now).Scan(&question.ID, &question.Title, &question.Content,
+	`, now.Format("2006-01-02T15:04:05Z")).Scan(&question.ID, &question.Title, &question.Content,
 		&optionsJSON, &question.CorrectAnswer, &question.Reward, &question.ScheduledAt)
 
 	if err != nil {
@@ -46,17 +46,17 @@ func (qm *QuizManager) GetAvailableQuiz() (*models.Question, error) {
 
 // GetNextQuiz retorna o próximo quiz agendado
 func (qm *QuizManager) GetNextQuiz() (*models.Question, error) {
-	now := time.Now()
+	now := time.Now().UTC() // FIX: Usar UTC para consistência
 	var question models.Question
 	var optionsJSON string
 
 	err := qm.db.QueryRow(`
 		SELECT id, title, content, options, correct_answer, reward, scheduled_at 
 		FROM questions 
-		WHERE scheduled_at > ? AND is_active = 1
+		WHERE datetime(scheduled_at) > datetime(?)
 		ORDER BY scheduled_at ASC 
 		LIMIT 1
-	`, now).Scan(&question.ID, &question.Title, &question.Content,
+	`, now.Format("2006-01-02T15:04:05Z")).Scan(&question.ID, &question.Title, &question.Content,
 		&optionsJSON, &question.CorrectAnswer, &question.Reward, &question.ScheduledAt)
 
 	if err != nil {
