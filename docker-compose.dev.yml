@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  # Aplicação principal (desenvolvimento)
+  valentine-quiz:
+    build: .
+    ports:
+      - "8080:8080"  # Expor diretamente para desenvolvimento
+    environment:
+      - GIN_MODE=debug
+      - PORT=8080
+      - DB_PATH=/data/quiz.db
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - VISITOR_USERNAME=${VISITOR_USERNAME:-momo}
+      - VISITOR_PASSWORD=${VISITOR_PASSWORD:-momo3006}
+      - JWT_SECRET=${JWT_SECRET:-dev_secret_key}
+    volumes:
+      - quiz_data:/data
+      - ./web:/app/web  # Hot reload para templates
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  quiz_data:
+    driver: local
