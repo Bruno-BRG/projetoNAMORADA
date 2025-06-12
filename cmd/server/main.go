@@ -2,127 +2,83 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
-
-	"namorada-quiz/internal/database"
-	"namorada-quiz/internal/handlers"
-	"namorada-quiz/internal/middleware"
-	"namorada-quiz/internal/models"
+	"valentine-quiz/internal/database"
+	"valentine-quiz/internal/handlers"
+	"valentine-quiz/internal/middleware"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	// Configurar ambiente
-	if os.Getenv("GIN_MODE") == "" {
-		gin.SetMode(gin.DebugMode)
-	}
+	// Carregar variáveis de ambiente
+	_ = godotenv.Load()
 
-	// Configurar banco de dados
-	dbPath := getEnv("DATABASE_PATH", "./quiz.db")
-	db, err := database.NewDB(dbPath)
+	// Inicializar banco de dados
+	db, err := database.Initialize()
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Fatal("Erro ao inicializar banco:", err)
 	}
 	defer db.Close()
 
-	// Criar usuário admin padrão se não existir
-	if err := createDefaultAdmin(db); err != nil {
-		log.Printf("Warning: Failed to create default admin: %v", err)
+	// Setup do Gin
+	if os.Getenv("GIN_MODE") == "release" {
+		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Configurar handlers
-	handler := handlers.NewHandler(db)
-
-	// Configurar router
 	r := gin.Default()
 
-	// Carregar templates
-	r.LoadHTMLGlob("templates/*")
-
-	// Servir arquivos estáticos
-	r.Static("/static", "./static")
-
-	// Middleware global
-	r.Use(middleware.CORSMiddleware())
+	// Middleware
+	r.Use(middleware.CORS())
 	r.Use(middleware.SecurityHeaders())
+	// Templates e arquivos estáticos
+	r.LoadHTMLGlob("web/templates/*")
+	r.Static("/static", "./web/static")
+
+	// Handlers
+	h := handlers.New(db)
 
 	// Rotas públicas
-	r.GET("/", handler.Home)
-	r.GET("/login", handler.LoginPage)
-	r.POST("/api/login", handler.Login)
-	// Rotas protegidas
-	protected := r.Group("/")
-	protected.Use(middleware.AuthMiddleware())
+	public := r.Group("/")
 	{
-		protected.POST("/api/logout", handler.Logout)
-
-		// Rotas para visitantes (namorada)
-		protected.GET("/dashboard", middleware.RequireRole("visitor"), handler.Dashboard)
-		protected.GET("/api/questions/available", middleware.RequireRole("visitor"), handler.GetAvailableQuestions)
-		protected.POST("/api/questions/answer", middleware.RequireRole("visitor"), handler.AnswerQuestion)
-		protected.GET("/api/stats", middleware.RequireRole("visitor"), handler.GetUserStats)
-
-		// Rotas HTMX para templates parciais
-		protected.GET("/api/stats/render", middleware.RequireRole("visitor"), handler.RenderStats)
-		protected.GET("/api/questions/render", middleware.RequireRole("visitor"), handler.RenderQuestions)
-		protected.GET("/api/questions/:id/form", middleware.RequireRole("visitor"), handler.RenderQuestionForm)
-
-		// Rotas para admin
-		admin := protected.Group("/admin")
-		admin.Use(middleware.RequireRole("admin"))
-		{
-			admin.GET("/", handler.AdminDashboard)
-			admin.GET("/questions", handler.GetAllQuestions)
-			admin.POST("/questions", handler.CreateQuestion)
-			admin.PUT("/questions/:id", handler.UpdateQuestion)
-			admin.DELETE("/questions/:id", handler.DeleteQuestion)
-			admin.GET("/users", handler.GetAllUsers)
-			admin.GET("/stats", handler.GetAdminStats)
-		}
+		public.GET("/", h.Home)
+		public.GET("/login", h.LoginPage)
+		public.POST("/login", h.Login)
+		public.GET("/logout", h.Logout)
+	}
+	// Rotas protegidas para visitante
+	visitor := r.Group("/quiz")
+	visitor.Use(middleware.RequireVisitorAuth())
+	{
+		visitor.GET("/", h.QuizHome)
+		visitor.GET("/status", h.QuizStatus)
+		visitor.GET("/countdown", h.Countdown)
+		visitor.GET("/current", h.CurrentQuiz)
+		visitor.POST("/answer", h.SubmitAnswer)
+		visitor.GET("/progress", h.Progress)
 	}
 
-	// Iniciar servidor
-	port := getEnv("PORT", "8080")
-	log.Printf("Server starting on port %s", port)
-
-	if err := r.Run(":" + port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
-}
-
-func createDefaultAdmin(db *database.DB) error {
-	// Verificar se já existe um admin
-	user, err := db.GetUserByUsername("admin")
-	if err != nil {
-		return err
+	// Rotas de admin
+	admin := r.Group("/admin")
+	admin.Use(middleware.RequireAdminAuth())
+	{
+		admin.GET("/", h.AdminDashboard)
+		admin.GET("/questions", h.ListQuestions)
+		admin.GET("/questions/new", h.NewQuestionForm)
+		admin.POST("/questions", h.CreateQuestion)
+		admin.GET("/questions/:id/edit", h.EditQuestionForm)
+		admin.PUT("/questions/:id", h.UpdateQuestion)
+		admin.DELETE("/questions/:id", h.DeleteQuestion)
+		admin.GET("/responses", h.ViewResponses)
 	}
 
-	if user != nil {
-		return nil // Admin já existe
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
 
-	// Criar senha hash
-	password := getEnv("ADMIN_PASSWORD", "admin123")
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	// Criar usuário admin
-	admin := &models.User{
-		Username: "admin",
-		Password: string(hashedPassword),
-		Role:     "admin",
-	}
-
-	return db.CreateUser(admin)
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
+	log.Printf("Servidor rodando na porta %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, r))
 }

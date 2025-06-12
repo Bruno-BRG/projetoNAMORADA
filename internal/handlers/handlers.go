@@ -1,508 +1,309 @@
 package handlers
 
 import (
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
-
-	"namorada-quiz/internal/database"
-	"namorada-quiz/internal/middleware"
-	"namorada-quiz/internal/models"
+	"valentine-quiz/internal/auth"
+	"valentine-quiz/internal/models"
+	"valentine-quiz/internal/quiz"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type Handler struct {
-	db *database.DB
+	db          *sql.DB
+	quizManager *quiz.QuizManager
 }
 
-func NewHandler(db *database.DB) *Handler {
-	return &Handler{db: db}
-}
-
-// Auth handlers
-func (h *Handler) Login(c *gin.Context) {
-	var req models.LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
-		return
-	}
-
-	user, err := h.db.GetUserByUsername(req.Username)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
-	}
-
-	if user == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-		return
-	}
-
-	// Verificar senha
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-		return
-	}
-
-	// Gerar JWT
-	token, err := middleware.GenerateJWT(user.ID, user.Username, user.Role)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
-		return
-	}
-
-	// Definir cookie httpOnly
-	c.SetCookie("auth_token", token, 24*3600, "/", "", false, true)
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Login successful",
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"role":     user.Role,
-		},
-		"token": token,
-	})
-}
-
-func (h *Handler) Logout(c *gin.Context) {
-	c.SetCookie("auth_token", "", -1, "/", "", false, true)
-	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
-}
-
-// Question handlers
-func (h *Handler) CreateQuestion(c *gin.Context) {
-	var req models.CreateQuestionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format", "details": err.Error()})
-		return
-	}
-
-	// Parse scheduled time
-	scheduledAt, err := time.Parse(time.RFC3339, req.ScheduledAt)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid scheduled_at format. Use ISO 8601 format"})
-		return
-	}
-
-	question := &models.Question{
-		Title:         req.Title,
-		Description:   req.Description,
-		Options:       req.Options,
-		CorrectAnswer: req.CorrectAnswer,
-		Reward:        req.Reward,
-		ScheduledAt:   scheduledAt,
-		IsActive:      true,
-	}
-
-	if err := h.db.CreateQuestion(question); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create question"})
-		return
-	}
-
-	c.JSON(http.StatusCreated, gin.H{
-		"message":  "Question created successfully",
-		"question": question,
-	})
-}
-
-func (h *Handler) GetQuestions(c *gin.Context) {
-	// Para admin: retorna todas as perguntas
-	// Para visitor: retorna apenas perguntas disponíveis
-	role, _ := c.Get("role")
-	userID, _ := c.Get("user_id")
-
-	if role == "admin" {
-		questions, err := h.db.GetAllQuestions()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get questions"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"questions": questions})
-	} else {
-		questions, err := h.db.GetAvailableQuestions(userID.(int))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get questions"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"questions": questions})
+func New(db *sql.DB) *Handler {
+	return &Handler{
+		db:          db,
+		quizManager: quiz.NewQuizManager(db),
 	}
 }
 
-// Answer handlers
-func (h *Handler) SubmitAnswer(c *gin.Context) {
-	var req models.AnswerRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
-		return
+// getUserID extrai o ID do usuário do contexto (simplificado para o projeto)
+func (h *Handler) getUserID(c *gin.Context) string {
+	token, _ := c.Cookie("visitor_session")
+	if token != "" {
+		return "visitor" // ID fixo para simplificar
 	}
-
-	userID, _ := c.Get("user_id")
-
-	// Verificar se a pergunta existe e está disponível
-	question, err := h.db.GetQuestionByID(req.QuestionID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
-	}
-
-	if question == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Question not found"})
-		return
-	}
-
-	// Verificar se a pergunta está disponível (horário já passou)
-	if time.Now().Before(question.ScheduledAt) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Question not available yet"})
-		return
-	}
-
-	// Verificar se a resposta está correta
-	isCorrect := req.Answer == question.CorrectAnswer
-
-	answer := &models.Answer{
-		UserID:     userID.(int),
-		QuestionID: req.QuestionID,
-		Answer:     req.Answer,
-		IsCorrect:  isCorrect,
-	}
-
-	if err := h.db.CreateAnswer(answer); err != nil {
-		// Se for erro de constraint (já respondeu), retornar erro específico
-		c.JSON(http.StatusConflict, gin.H{"error": "Question already answered"})
-		return
-	}
-
-	response := gin.H{
-		"message":    "Answer submitted successfully",
-		"is_correct": isCorrect,
-	}
-
-	// Se a resposta estiver correta, incluir a recompensa
-	if isCorrect {
-		response["reward"] = question.Reward
-		response["congratulations"] = "🎉 Resposta correta! Você ganhou uma recompensa!"
-	} else {
-		response["feedback"] = "😔 Resposta incorreta, mas não desista!"
-	}
-
-	c.JSON(http.StatusOK, response)
+	return ""
 }
 
-// Dashboard handlers
-func (h *Handler) GetDashboard(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	role, _ := c.Get("role")
-
-	if role == "admin" {
-		// Dashboard do admin
-		questions, err := h.db.GetAllQuestions()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get questions"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"role":      "admin",
-			"questions": questions,
-			"stats": gin.H{
-				"total_questions": len(questions),
-				"active_questions": func() int {
-					count := 0
-					for _, q := range questions {
-						if q.IsActive {
-							count++
-						}
-					}
-					return count
-				}(),
-			},
-		})
-	} else {
-		// Dashboard do visitor
-		questions, err := h.db.GetAvailableQuestions(userID.(int))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get questions"})
-			return
-		}
-
-		stats := gin.H{
-			"total_questions":     len(questions),
-			"available_questions": 0,
-			"answered_questions":  0,
-			"correct_answers":     0,
-		}
-
-		for _, q := range questions {
-			if q.IsAvailable {
-				stats["available_questions"] = stats["available_questions"].(int) + 1
-			}
-			if q.IsAnswered {
-				stats["answered_questions"] = stats["answered_questions"].(int) + 1
-			}
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"role":      "visitor",
-			"questions": questions,
-			"stats":     stats,
-		})
-	}
-}
-
-// Page handlers
+// Página inicial
 func (h *Handler) Home(c *gin.Context) {
-	// Verificar se já está logado
-	token, err := c.Cookie("auth_token")
-	if err == nil && token != "" {
-		claims, err := middleware.ValidateJWT(token)
-		if err == nil {
-			// Redirecionar baseado no role
-			if claims.Role == "admin" {
-				c.Redirect(http.StatusFound, "/admin")
-			} else {
-				c.Redirect(http.StatusFound, "/dashboard")
-			}
+	c.HTML(http.StatusOK, "home.html", gin.H{
+		"title": "Quiz do Dia dos Namorados 💕",
+	})
+}
+
+// Página de login
+func (h *Handler) LoginPage(c *gin.Context) {
+	isAdmin := c.Query("admin") == "1"
+	c.HTML(http.StatusOK, "login.html", gin.H{
+		"title":   "Login",
+		"isAdmin": isAdmin,
+	})
+}
+
+// Processo de login melhorado
+func (h *Handler) Login(c *gin.Context) {
+	username := c.PostForm("username")
+	password := c.PostForm("password")
+	isAdmin := c.PostForm("admin") == "1"
+
+	if auth.CheckCredentials(username, password, isAdmin) {
+		token, err := auth.GenerateToken(username, isAdmin)
+		if err != nil {
+			c.HTML(http.StatusInternalServerError, "login.html", gin.H{
+				"error":   "Erro interno do servidor",
+				"isAdmin": isAdmin,
+			})
 			return
 		}
+
+		if isAdmin {
+			c.SetCookie("admin_session", token, 86400, "/", "", false, true)
+			c.Redirect(http.StatusFound, "/admin")
+		} else {
+			c.SetCookie("visitor_session", token, 86400, "/", "", false, true)
+			c.Redirect(http.StatusFound, "/quiz")
+		}
+		return
 	}
 
-	c.Redirect(http.StatusFound, "/login")
-}
-
-func (h *Handler) LoginPage(c *gin.Context) {
-	c.HTML(http.StatusOK, "login.html", gin.H{
-		"Title": "Login",
+	c.HTML(http.StatusUnauthorized, "login.html", gin.H{
+		"error":   "Credenciais inválidas",
+		"isAdmin": isAdmin,
 	})
 }
 
-func (h *Handler) Dashboard(c *gin.Context) {
-	userID := c.MustGet("userID").(int)
-	username := c.MustGet("username").(string)
-	role := c.MustGet("role").(string)
-
-	c.HTML(http.StatusOK, "dashboard.html", gin.H{
-		"Title": "Dashboard",
-		"User": gin.H{
-			"ID":       userID,
-			"Username": username,
-			"Role":     role,
-		},
-	})
+// Logout
+func (h *Handler) Logout(c *gin.Context) {
+	c.SetCookie("admin_session", "", -1, "/", "", false, true)
+	c.SetCookie("visitor_session", "", -1, "/", "", false, true)
+	c.Redirect(http.StatusFound, "/")
 }
 
+// Quiz Dashboard (nova abordagem HTMX)
+func (h *Handler) QuizHome(c *gin.Context) {
+	userID := h.getUserID(c)
+	if userID == "" {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	status := h.getQuizStatus(userID)
+	c.HTML(http.StatusOK, "quiz_dashboard.html", status)
+}
+
+// Status do Quiz (endpoint HTMX)
+func (h *Handler) QuizStatus(c *gin.Context) {
+	userID := h.getUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Não autorizado"})
+		return
+	}
+
+	status := h.getQuizStatus(userID)
+	c.HTML(http.StatusOK, "quiz_content.html", status)
+}
+
+// Helper para obter status do quiz
+func (h *Handler) getQuizStatus(userID string) gin.H {
+	// Quiz atual disponível
+	currentQuiz, err := h.quizManager.GetAvailableQuiz()
+	hasCurrent := err == nil
+
+	// Verificar se já respondeu
+	alreadyAnswered := false
+	if hasCurrent {
+		alreadyAnswered = h.quizManager.HasUserAnswered(currentQuiz.ID, userID)
+	}
+
+	// Próximo quiz
+	nextQuiz, err := h.quizManager.GetNextQuiz()
+	hasNext := err == nil
+
+	// Tempo até o próximo
+	timeUntilNext := ""
+	if hasNext {
+		duration := time.Until(nextQuiz.ScheduledAt)
+		timeUntilNext = formatDuration(duration)
+	}
+
+	// Progresso
+	progress, _ := h.quizManager.GetQuizProgress(userID)
+
+	return gin.H{
+		"HasCurrent":      hasCurrent,
+		"Current":         currentQuiz,
+		"AlreadyAnswered": alreadyAnswered,
+		"HasNext":         hasNext,
+		"Next":            nextQuiz,
+		"TimeUntilNext":   timeUntilNext,
+		"Progress":        progress,
+	}
+}
+
+// Countdown endpoint para HTMX
+func (h *Handler) Countdown(c *gin.Context) {
+	nextQuiz, err := h.quizManager.GetNextQuiz()
+	if err != nil {
+		c.String(http.StatusOK, "Nenhum quiz agendado")
+		return
+	}
+
+	duration := time.Until(nextQuiz.ScheduledAt)
+	if duration <= 0 {
+		c.String(http.StatusOK, "Disponível agora!")
+		return
+	}
+
+	c.String(http.StatusOK, formatDuration(duration))
+}
+
+// Submeter resposta (HTMX endpoint)
+func (h *Handler) SubmitAnswer(c *gin.Context) {
+	userID := h.getUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Não autorizado"})
+		return
+	}
+
+	questionID, _ := strconv.Atoi(c.PostForm("question_id"))
+	answer := c.PostForm("answer")
+
+	// Verificar se já respondeu
+	if h.quizManager.HasUserAnswered(questionID, userID) {
+		status := h.getQuizStatus(userID)
+		c.HTML(http.StatusOK, "quiz_content.html", status)
+		return
+	}
+
+	// Registrar resposta
+	err := h.quizManager.SubmitAnswer(questionID, userID, answer)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Retornar status atualizado
+	status := h.getQuizStatus(userID)
+	c.HTML(http.StatusOK, "quiz_content.html", status)
+}
+
+// Helper para formatar duração
+func formatDuration(d time.Duration) string {
+	if d <= 0 {
+		return "Disponível agora!"
+	}
+
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+
+	if hours > 0 {
+		return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+	}
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+// === ADMIN HANDLERS ===
+
+// Dashboard admin
 func (h *Handler) AdminDashboard(c *gin.Context) {
-	userID := c.MustGet("userID").(int)
-	username := c.MustGet("username").(string)
-	role := c.MustGet("role").(string)
+	var totalQuestions, totalResponses, correctResponses int
 
-	c.HTML(http.StatusOK, "admin.html", gin.H{
-		"Title": "Admin Dashboard",
-		"User": gin.H{
-			"ID":       userID,
-			"Username": username,
-			"Role":     role,
-		},
+	h.db.QueryRow("SELECT COUNT(*) FROM questions").Scan(&totalQuestions)
+	h.db.QueryRow("SELECT COUNT(*) FROM user_responses").Scan(&totalResponses)
+	h.db.QueryRow("SELECT COUNT(*) FROM user_responses WHERE is_correct = 1").Scan(&correctResponses)
+
+	c.HTML(http.StatusOK, "admin_dashboard.html", gin.H{
+		"title":            "Dashboard Admin",
+		"totalQuestions":   totalQuestions,
+		"totalResponses":   totalResponses,
+		"correctResponses": correctResponses,
 	})
 }
 
-// API handlers específicos
-func (h *Handler) GetAvailableQuestions(c *gin.Context) {
-	userID := c.MustGet("userID").(int)
-
-	questions, err := h.db.GetAvailableQuestions(userID)
+// Listar perguntas
+func (h *Handler) ListQuestions(c *gin.Context) {
+	rows, err := h.db.Query(`
+		SELECT id, title, content, reward, scheduled_at, is_active 
+		FROM questions 
+		ORDER BY scheduled_at ASC
+	`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get questions"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	defer rows.Close()
 
-	c.JSON(http.StatusOK, gin.H{"questions": questions})
-}
+	var questions []models.Question
+	for rows.Next() {
+		var q models.Question
+		var optionsJSON string
+		rows.Scan(&q.ID, &q.Title, &q.Content, &q.Reward, &q.ScheduledAt, &q.IsActive)
 
-func (h *Handler) AnswerQuestion(c *gin.Context) {
-	userID := c.MustGet("userID").(int)
+		// Parse options se necessário
+		if optionsJSON != "" {
+			json.Unmarshal([]byte(optionsJSON), &q.Options)
+		}
 
-	var req models.AnswerRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
-		return
+		questions = append(questions, q)
 	}
 
-	// Verificar se a pergunta está disponível
-	question, err := h.db.GetQuestionByID(req.QuestionID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
-	}
-
-	if question == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Question not found"})
-		return
-	}
-
-	// Verificar se já foi respondida
-	existingAnswer, err := h.db.GetAnswerByUserAndQuestion(userID, req.QuestionID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
-	}
-
-	if existingAnswer != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Question already answered"})
-		return
-	}
-
-	// Verificar se está no horário correto
-	if time.Now().Before(question.ScheduledAt) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Question not available yet"})
-		return
-	}
-
-	// Criar resposta
-	isCorrect := req.Answer == question.CorrectAnswer
-	answer := &models.Answer{
-		UserID:     userID,
-		QuestionID: req.QuestionID,
-		Answer:     req.Answer,
-		IsCorrect:  isCorrect,
-	}
-
-	if err := h.db.CreateAnswer(answer); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save answer"})
-		return
-	}
-
-	response := gin.H{
-		"correct": isCorrect,
-		"message": "Answer submitted successfully",
-	}
-
-	if isCorrect {
-		response["reward"] = question.Reward
-	}
-
-	c.JSON(http.StatusOK, response)
-}
-
-func (h *Handler) GetUserStats(c *gin.Context) {
-	userID := c.MustGet("userID").(int)
-
-	stats, err := h.db.GetUserStats(userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get stats"})
-		return
-	}
-
-	c.JSON(http.StatusOK, stats)
-}
-
-func (h *Handler) GetAllQuestions(c *gin.Context) {
-	questions, err := h.db.GetAllQuestions()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get questions"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"questions": questions})
-}
-
-func (h *Handler) UpdateQuestion(c *gin.Context) {
-	// TODO: Implementar atualização de pergunta
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented yet"})
-}
-
-func (h *Handler) DeleteQuestion(c *gin.Context) {
-	// TODO: Implementar exclusão de pergunta
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented yet"})
-}
-
-func (h *Handler) GetAllUsers(c *gin.Context) {
-	users, err := h.db.GetAllUsers()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get users"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"users": users})
-}
-
-func (h *Handler) GetAdminStats(c *gin.Context) {
-	stats, err := h.db.GetAdminStats()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get stats"})
-		return
-	}
-
-	c.JSON(http.StatusOK, stats)
-}
-
-// Handlers para templates parciais (HTMX)
-func (h *Handler) RenderStats(c *gin.Context) {
-	userID := c.MustGet("userID").(int)
-
-	stats, err := h.db.GetUserStats(userID)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Erro ao carregar estatísticas")
-		return
-	}
-
-	c.HTML(http.StatusOK, "partials/stats.html", gin.H{
-		"stats": stats,
-	})
-}
-
-func (h *Handler) RenderQuestions(c *gin.Context) {
-	userID := c.MustGet("userID").(int)
-
-	questions, err := h.db.GetAvailableQuestions(userID)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Erro ao carregar perguntas")
-		return
-	}
-
-	c.HTML(http.StatusOK, "partials/questions.html", gin.H{
+	c.HTML(http.StatusOK, "admin_questions.html", gin.H{
+		"title":     "Gerenciar Perguntas",
 		"questions": questions,
 	})
 }
 
-func (h *Handler) RenderQuestionForm(c *gin.Context) {
-	questionIDStr := c.Param("id")
-	questionID := 0
-
-	if _, err := fmt.Sscanf(questionIDStr, "%d", &questionID); err != nil {
-		c.String(http.StatusBadRequest, "ID da pergunta inválido")
-		return
-	}
-
-	userID := c.MustGet("userID").(int)
-
-	// Verificar se a pergunta existe e está disponível
-	question, err := h.db.GetQuestionByID(questionID)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Erro ao carregar pergunta")
-		return
-	}
-
-	if question == nil {
-		c.String(http.StatusNotFound, "Pergunta não encontrada")
-		return
-	}
-
-	// Verificar se já foi respondida
-	existingAnswer, err := h.db.GetAnswerByUserAndQuestion(userID, questionID)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Erro no banco de dados")
-		return
-	}
-
-	if existingAnswer != nil {
-		c.String(http.StatusBadRequest, "Pergunta já foi respondida")
-		return
-	}
-
-	c.HTML(http.StatusOK, "partials/question-form.html", gin.H{
-		"question": question,
+// Form nova pergunta
+func (h *Handler) NewQuestionForm(c *gin.Context) {
+	c.HTML(http.StatusOK, "admin_question_form.html", gin.H{
+		"title": "Nova Pergunta",
 	})
 }
+
+// Criar pergunta
+func (h *Handler) CreateQuestion(c *gin.Context) {
+	title := c.PostForm("title")
+	content := c.PostForm("content")
+	option1 := c.PostForm("option1")
+	option2 := c.PostForm("option2")
+	option3 := c.PostForm("option3")
+	option4 := c.PostForm("option4")
+	correctAnswer, _ := strconv.Atoi(c.PostForm("correct_answer"))
+	reward := c.PostForm("reward")
+	scheduledAt := c.PostForm("scheduled_at")
+
+	options := []string{option1, option2, option3, option4}
+	optionsJSON, _ := json.Marshal(options)
+
+	_, err := h.db.Exec(`
+		INSERT INTO questions (title, content, options, correct_answer, reward, scheduled_at, is_active)
+		VALUES (?, ?, ?, ?, ?, ?, 1)
+	`, title, content, string(optionsJSON), correctAnswer, reward, scheduledAt)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/admin/questions")
+}
+
+// Placeholders para funções restantes
+func (h *Handler) CurrentQuiz(c *gin.Context)      { h.QuizStatus(c) }
+func (h *Handler) Progress(c *gin.Context)         { /* implementar se necessário */ }
+func (h *Handler) EditQuestionForm(c *gin.Context) { /* implementar */ }
+func (h *Handler) UpdateQuestion(c *gin.Context)   { /* implementar */ }
+func (h *Handler) DeleteQuestion(c *gin.Context)   { /* implementar */ }
+func (h *Handler) ViewResponses(c *gin.Context)    { /* implementar */ }

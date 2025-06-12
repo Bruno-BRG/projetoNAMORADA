@@ -1,47 +1,47 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
+
+# Instalar dependências necessárias
+RUN apk add --no-cache gcc musl-dev sqlite-dev
 
 WORKDIR /app
 
-# Install git for private modules if needed
-RUN apk add --no-cache git
-
-# Copy go mod files
+# Copiar arquivos de dependências primeiro (para cache)
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
+# Copiar código fonte
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server
+# Build da aplicação
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o main cmd/server/main.go
 
 # Final stage
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS requests and sqlite
-RUN apk --no-cache add ca-certificates sqlite
+# Instalar dependências mínimas
+RUN apk --no-cache add ca-certificates sqlite wget tzdata && \
+    rm -rf /var/cache/apk/*
 
-WORKDIR /root/
+# Criar usuário não-root
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
 
-# Copy the binary from builder stage
-COPY --from=builder /app/main .
+WORKDIR /app
 
-# Copy static files and templates
-COPY --from=builder /app/static ./static
-COPY --from=builder /app/templates ./templates
+# Copiar binário e templates
+COPY --from=builder --chown=appuser:appgroup /app/main ./
+COPY --from=builder --chown=appuser:appgroup /app/web ./web
 
-# Create volume for database
-VOLUME ["/root/data"]
+# Criar diretório de dados
+RUN mkdir -p /data && chown appuser:appgroup /data
 
-# Expose port
+# Trocar para usuário não-root
+USER appuser
+
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
 
-# Command to run
 CMD ["./main"]

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}} - Quiz Admin</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+        body { font-family: 'Poppins', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-800">
+                        <i class="fas fa-question-circle text-blue-600 mr-2"></i>
+                        {{.title}}
+                    </h1>
+                    <p class="text-gray-600 mt-1">Gerencie as perguntas do quiz</p>
+                </div>
+                <div class="flex space-x-3">
+                    <a href="/admin/questions/new" 
+                       class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-all">
+                        <i class="fas fa-plus mr-2"></i>
+                        Nova Pergunta
+                    </a>
+                    <a href="/admin" 
+                       class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-all">
+                        <i class="fas fa-arrow-left mr-2"></i>
+                        Voltar
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de Perguntas -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            {{if .questions}}
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Pergunta
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Agendado Para
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Status
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Recompensa
+                                </th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Ações
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {{range .questions}}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4">
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-900">{{.Title}}</div>
+                                        <div class="text-sm text-gray-500 truncate max-w-xs">{{.Content}}</div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">
+                                        {{.ScheduledAt.Format "02/01/2006 15:04"}}
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    {{if .IsActive}}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                            <i class="fas fa-check-circle mr-1"></i>
+                                            Ativo
+                                        </span>
+                                    {{else}}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                                            <i class="fas fa-times-circle mr-1"></i>
+                                            Inativo
+                                        </span>
+                                    {{end}}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="text-sm text-gray-900">{{.Reward}}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <div class="flex justify-end space-x-2">
+                                        <a href="/admin/questions/{{.ID}}/edit" 
+                                           class="text-blue-600 hover:text-blue-900">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <button hx-delete="/admin/questions/{{.ID}}"
+                                                hx-confirm="Tem certeza que deseja excluir esta pergunta?"
+                                                hx-target="closest tr"
+                                                hx-swap="outerHTML"
+                                                class="text-red-600 hover:text-red-900 ml-2">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            {{else}}
+                <div class="text-center py-12">
+                    <i class="fas fa-question-circle text-gray-400 text-6xl mb-4"></i>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">Nenhuma pergunta cadastrada</h3>
+                    <p class="text-gray-500 mb-6">Comece criando sua primeira pergunta do quiz</p>
+                    <a href="/admin/questions/new" 
+                       class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-all">
+                        <i class="fas fa-plus mr-2"></i>
+                        Criar Primeira Pergunta
+                    </a>
+                </div>
+            {{end}}
+        </div>
+    </div>
+
+    <script>
+        // Confirmação antes de excluir
+        document.body.addEventListener('htmx:confirm', function(evt) {
+            if (evt.detail.question && evt.detail.question.includes('excluir')) {
+                evt.detail.issueRequest = confirm(evt.detail.question);
+            }
+        });
+    </script>
+</body>
+</html>

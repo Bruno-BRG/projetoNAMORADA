@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}}</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+        body { font-family: 'Poppins', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .heart-bounce { animation: heartBeat 1.5s ease-in-out infinite; }
+        @keyframes heartBeat {
+            0% { transform: scale(1); }
+            14% { transform: scale(1.1); }
+            28% { transform: scale(1); }
+            42% { transform: scale(1.1); }
+            70% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="min-h-screen gradient-bg">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-md mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div class="bg-gradient-to-r from-pink-500 to-red-500 p-6 text-center">
+                <i class="fas fa-heart text-white text-4xl heart-bounce mb-4"></i>
+                <h1 class="text-2xl font-bold text-white">Quiz do Amor</h1>
+                <p class="text-pink-100 mt-2">Dia dos Namorados Especial</p>
+            </div>
+            
+            <div class="p-8 text-center">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Bem-vinda, meu amor! 💕</h2>
+                <p class="text-gray-600 mb-8">
+                    Preparei alguns quiz especiais para hoje. Cada pergunta será liberada em horários específicos 
+                    ao longo do dia, e cada acerto tem uma recompensa especial!
+                </p>
+                
+                <div class="space-y-4">
+                    <a href="/login" 
+                       class="block w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-3 rounded-lg font-semibold hover:from-pink-600 hover:to-red-600 transition-all transform hover:scale-105">
+                        <i class="fas fa-play mr-2"></i>
+                        Começar Quiz
+                    </a>
+                    
+                    <a href="/login?admin=1" 
+                       class="block w-full bg-gray-500 text-white py-2 rounded-lg text-sm hover:bg-gray-600 transition-all">
+                        <i class="fas fa-cog mr-2"></i>
+                        Admin
+                    </a>
+                </div>
+                
+                <div class="mt-8 text-xs text-gray-500">
+                    Feito com 💖 especialmente para você
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
