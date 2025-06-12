@@ -74,10 +74,10 @@ func CheckCredentials(username, password string, isAdmin bool) bool {
 		visitorUser := os.Getenv("VISITOR_USERNAME")
 		visitorPass := os.Getenv("VISITOR_PASSWORD")
 		if visitorUser == "" {
-			visitorUser = "namorada"
+			visitorUser = "momo"
 		}
 		if visitorPass == "" {
-			visitorPass = "amor123"
+			visitorPass = "momo3006"
 		}
 		return username == visitorUser && password == visitorPass
 	}

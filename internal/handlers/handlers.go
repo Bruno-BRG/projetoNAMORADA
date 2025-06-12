@@ -28,11 +28,18 @@ func New(db *sql.DB) *Handler {
 
 // getUserID extrai o ID do usuário do contexto (simplificado para o projeto)
 func (h *Handler) getUserID(c *gin.Context) string {
-	token, _ := c.Cookie("visitor_session")
-	if token != "" {
-		return "visitor" // ID fixo para simplificar
+	token, err := c.Cookie("visitor_session")
+	if err != nil || token == "" {
+		return ""
 	}
-	return ""
+
+	// Validar token (simplificado)
+	claims, err := auth.ValidateToken(token)
+	if err != nil {
+		return ""
+	}
+
+	return claims.Username // Usar username como ID único
 }
 
 // Página inicial
@@ -235,7 +242,7 @@ func (h *Handler) AdminDashboard(c *gin.Context) {
 // Listar perguntas
 func (h *Handler) ListQuestions(c *gin.Context) {
 	rows, err := h.db.Query(`
-		SELECT id, title, content, reward, scheduled_at, is_active 
+		SELECT id, title, content, options, reward, scheduled_at, is_active 
 		FROM questions 
 		ORDER BY scheduled_at ASC
 	`)
@@ -249,9 +256,14 @@ func (h *Handler) ListQuestions(c *gin.Context) {
 	for rows.Next() {
 		var q models.Question
 		var optionsJSON string
-		rows.Scan(&q.ID, &q.Title, &q.Content, &q.Reward, &q.ScheduledAt, &q.IsActive)
+		err = rows.Scan(&q.ID, &q.Title, &q.Content, &optionsJSON,
+			&q.Reward, &q.ScheduledAt, &q.IsActive)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 
-		// Parse options se necessário
+		// Parse options JSON
 		if optionsJSON != "" {
 			json.Unmarshal([]byte(optionsJSON), &q.Options)
 		}
@@ -301,9 +313,206 @@ func (h *Handler) CreateQuestion(c *gin.Context) {
 }
 
 // Placeholders para funções restantes
-func (h *Handler) CurrentQuiz(c *gin.Context)      { h.QuizStatus(c) }
-func (h *Handler) Progress(c *gin.Context)         { /* implementar se necessário */ }
-func (h *Handler) EditQuestionForm(c *gin.Context) { /* implementar */ }
-func (h *Handler) UpdateQuestion(c *gin.Context)   { /* implementar */ }
-func (h *Handler) DeleteQuestion(c *gin.Context)   { /* implementar */ }
-func (h *Handler) ViewResponses(c *gin.Context)    { /* implementar */ }
+func (h *Handler) CurrentQuiz(c *gin.Context) { h.QuizStatus(c) }
+func (h *Handler) Progress(c *gin.Context)    { /* implementar se necessário */ }
+
+// Editar pergunta - formulário
+func (h *Handler) EditQuestionForm(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.Atoi(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		return
+	}
+
+	var question models.Question
+	var optionsJSON string
+
+	err = h.db.QueryRow(`
+		SELECT id, title, content, options, correct_answer, reward, scheduled_at, is_active
+		FROM questions WHERE id = ?
+	`, id).Scan(&question.ID, &question.Title, &question.Content,
+		&optionsJSON, &question.CorrectAnswer, &question.Reward,
+		&question.ScheduledAt, &question.IsActive)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Pergunta não encontrada"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Parse options JSON
+	if optionsJSON != "" {
+		json.Unmarshal([]byte(optionsJSON), &question.Options)
+	}
+
+	c.HTML(http.StatusOK, "admin_question_edit.html", gin.H{
+		"title":    "Editar Pergunta",
+		"question": question,
+	})
+}
+
+// Atualizar pergunta
+func (h *Handler) UpdateQuestion(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.Atoi(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		return
+	}
+
+	title := c.PostForm("title")
+	content := c.PostForm("content")
+	option1 := c.PostForm("option1")
+	option2 := c.PostForm("option2")
+	option3 := c.PostForm("option3")
+	option4 := c.PostForm("option4")
+	correctAnswer, _ := strconv.Atoi(c.PostForm("correct_answer"))
+	reward := c.PostForm("reward")
+	scheduledAt := c.PostForm("scheduled_at")
+
+	options := []string{option1, option2, option3, option4}
+	optionsJSON, _ := json.Marshal(options)
+
+	result, err := h.db.Exec(`
+		UPDATE questions 
+		SET title = ?, content = ?, options = ?, correct_answer = ?, 
+			reward = ?, scheduled_at = ?
+		WHERE id = ?
+	`, title, content, string(optionsJSON), correctAnswer, reward, scheduledAt, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pergunta não encontrada"})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/admin/questions")
+}
+
+// Deletar pergunta (HTMX)
+func (h *Handler) DeleteQuestion(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.Atoi(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		return
+	}
+
+	// Verificar se a pergunta existe
+	var exists bool
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM questions WHERE id = ?)", id).Scan(&exists)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao verificar pergunta"})
+		return
+	}
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pergunta não encontrada"})
+		return
+	}
+
+	// Deletar respostas relacionadas primeiro (integridade referencial)
+	_, err = h.db.Exec("DELETE FROM user_responses WHERE question_id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao deletar respostas"})
+		return
+	}
+
+	// Deletar a pergunta
+	result, err := h.db.Exec("DELETE FROM questions WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao deletar pergunta"})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pergunta não encontrada"})
+		return
+	}
+
+	// Para HTMX, retornar vazio remove o elemento
+	c.Status(http.StatusOK)
+}
+
+// Ver respostas
+func (h *Handler) ViewResponses(c *gin.Context) {
+	rows, err := h.db.Query(`
+		SELECT 
+			q.title,
+			q.content,
+			ur.answer,
+			ur.is_correct,
+			ur.answered_at,
+			q.reward
+		FROM user_responses ur
+		JOIN questions q ON ur.question_id = q.id
+		ORDER BY ur.answered_at DESC
+	`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type ResponseView struct {
+		QuestionTitle   string    `json:"question_title"`
+		QuestionContent string    `json:"question_content"`
+		Answer          int       `json:"answer"`
+		IsCorrect       bool      `json:"is_correct"`
+		AnsweredAt      time.Time `json:"answered_at"`
+		Reward          string    `json:"reward"`
+	}
+
+	var responses []ResponseView
+	for rows.Next() {
+		var r ResponseView
+		rows.Scan(&r.QuestionTitle, &r.QuestionContent, &r.Answer,
+			&r.IsCorrect, &r.AnsweredAt, &r.Reward)
+		responses = append(responses, r)
+	}
+
+	c.HTML(http.StatusOK, "admin_responses.html", gin.H{
+		"title":     "Respostas dos Quiz",
+		"responses": responses,
+	})
+}
+
+// Debug endpoint para verificar status
+func (h *Handler) DebugQuizStatus(c *gin.Context) {
+	userID := h.getUserID(c)
+
+	// Quiz atual disponível
+	currentQuiz, err := h.quizManager.GetAvailableQuiz()
+	hasCurrent := err == nil
+
+	// Próximo quiz
+	nextQuiz, errNext := h.quizManager.GetNextQuiz()
+	hasNext := errNext == nil
+
+	// Progresso
+	progress, _ := h.quizManager.GetQuizProgress(userID)
+
+	debugInfo := gin.H{
+		"UserID":       userID,
+		"HasCurrent":   hasCurrent,
+		"CurrentError": err,
+		"Current":      currentQuiz,
+		"HasNext":      hasNext,
+		"NextError":    errNext,
+		"Next":         nextQuiz,
+		"Progress":     progress,
+		"Now":          time.Now().Format("2006-01-02 15:04:05"),
+	}
+
+	c.JSON(http.StatusOK, debugInfo)
+}

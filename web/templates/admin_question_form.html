@@ -107,18 +107,33 @@
                                placeholder="Ex: Um beijinho especial + massage nos pés"
                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                     </div>
-                    
-                    <!-- Horário -->
+                      <!-- Horário -->
                     <div>
                         <label class="block text-gray-700 text-sm font-semibold mb-2">
                             <i class="fas fa-clock mr-2"></i>Horário de Liberação
                         </label>
-                        <input type="datetime-local" name="scheduled_at" required
+                        <input type="datetime-local" name="scheduled_at" required id="scheduled_at"
                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <p class="text-sm text-gray-500 mt-2">
-                            <i class="fas fa-info-circle mr-1"></i>
-                            A pergunta será liberada automaticamente neste horário
-                        </p>
+                        <div class="mt-2 space-y-2">
+                            <p class="text-sm text-gray-500">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                A pergunta será liberada automaticamente neste horário
+                            </p>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" onclick="setQuickTime(1)" class="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200">
+                                    +1 min
+                                </button>
+                                <button type="button" onclick="setQuickTime(5)" class="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200">
+                                    +5 min
+                                </button>
+                                <button type="button" onclick="setQuickTime(30)" class="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200">
+                                    +30 min
+                                </button>
+                                <button type="button" onclick="setQuickTime(60)" class="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200">
+                                    +1 hora
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -134,8 +149,47 @@
                         Cancelar
                     </a>
                 </div>
-            </form>
-        </div>
+            </form>        </div>
     </div>
+
+    <script>
+        // Função para definir horários rápidos
+        function setQuickTime(minutes) {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() + minutes);
+            
+            // Formatar para datetime-local
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const mins = String(now.getMinutes()).padStart(2, '0');
+            
+            const formattedDate = `${year}-${month}-${day}T${hours}:${mins}`;
+            document.getElementById('scheduled_at').value = formattedDate;
+        }
+
+        // Validação para evitar datas muito no futuro
+        document.getElementById('scheduled_at').addEventListener('change', function(e) {
+            const selectedDate = new Date(e.target.value);
+            const now = new Date();
+            const diffDays = (selectedDate - now) / (1000 * 60 * 60 * 24);
+            
+            if (diffDays > 7) {
+                if (confirm('⚠️ Você selecionou uma data mais de 7 dias no futuro. Tem certeza? Para testes, recomendo usar horários mais próximos.')) {
+                    return true;
+                } else {
+                    e.target.value = '';
+                }
+            }
+        });
+
+        // Definir horário padrão para 5 minutos no futuro
+        window.addEventListener('load', function() {
+            if (!document.getElementById('scheduled_at').value) {
+                setQuickTime(5);
+            }
+        });
+    </script>
 </body>
 </html>

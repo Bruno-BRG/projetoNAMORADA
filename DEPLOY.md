@@ -25,7 +25,7 @@ go run cmd/server/main.go
 
 **Credenciais de teste:**
 - **Admin**: `admin` / `admin123`
-- **Visitante**: `namorada` / `amor123`
+- **Visitante**: `momo` / `momo3006`
 
 ## 🌐 Deploy em Produção
 
@@ -44,7 +44,7 @@ nano .env
 
 # Mude as senhas para algo seguro:
 ADMIN_PASSWORD=sua_senha_super_segura
-VISITOR_PASSWORD=senha_da_namorada
+VISITOR_PASSWORD=momo3006
 JWT_SECRET=chave_jwt_bem_complexa_aqui
 GIN_MODE=release
 ```
@@ -68,10 +68,9 @@ curl http://localhost:8080
    - Build Command: `go build -o main cmd/server/main.go`
    - Start Command: `./main`
    - Environment Variables:
-     ```
-     GIN_MODE=release
+     ```     GIN_MODE=release
      ADMIN_PASSWORD=sua_senha
-     VISITOR_PASSWORD=senha_namorada
+     VISITOR_PASSWORD=momo3006
      JWT_SECRET=chave_complexa
      ```
 

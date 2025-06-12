@@ -7,12 +7,11 @@ set -e
 echo "🚀 Iniciando deploy do Quiz do Amor..."
 
 # Verificar se as variáveis estão definidas
-if [ -z "$CLOUDFLARE_ZONE_ID" ] || [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$DOMAIN" ]; then
-    echo "❌ Erro: Defina as variáveis CLOUDFLARE_ZONE_ID, CLOUDFLARE_API_TOKEN e DOMAIN"
+if [ -z "$DOMAIN" ]; then
+    echo "❌ Erro: Defina a variável DOMAIN"
     echo "Exemplo:"
-    echo "export CLOUDFLARE_ZONE_ID=sua_zone_id"
-    echo "export CLOUDFLARE_API_TOKEN=seu_token"
     echo "export DOMAIN=quiz.seudominio.com"
+    echo "export EMAIL=seu@email.com  # Para Let's Encrypt"
     exit 1
 fi
 
@@ -30,8 +29,11 @@ echo "⏳ Aguardando aplicação estar pronta..."
 sleep 10
 
 # Verificar se está funcionando
-if curl -f http://localhost:8080/ > /dev/null 2>&1; then
-    echo "✅ Aplicação rodando localmente em http://localhost:8080"
+if curl -f -k https://localhost:443/ > /dev/null 2>&1; then
+    echo "✅ Aplicação rodando com HTTPS em https://localhost"
+elif curl -f http://localhost:80/ > /dev/null 2>&1; then
+    echo "⚠️  Aplicação rodando apenas com HTTP em http://localhost"
+    echo "💡 Execute './setup-ssl.sh' para configurar HTTPS"
 else
     echo "❌ Erro: Aplicação não está respondendo"
     docker-compose logs

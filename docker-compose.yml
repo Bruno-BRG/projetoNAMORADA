@@ -1,18 +1,19 @@
 version: '3.8'
 
 services:
+  # Aplicação principal
   valentine-quiz:
     build: .
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"  # Expor só internamente, não para o host
     environment:
       - GIN_MODE=release
       - PORT=8080
       - DB_PATH=/data/quiz.db
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - VISITOR_USERNAME=${VISITOR_USERNAME:-namorada}
-      - VISITOR_PASSWORD=${VISITOR_PASSWORD:-amor123}
+      - VISITOR_USERNAME=${VISITOR_USERNAME:-momo}
+      - VISITOR_PASSWORD=${VISITOR_PASSWORD:-momo3006}
       - JWT_SECRET=${JWT_SECRET:-change_this_in_production}
     volumes:
       - quiz_data:/data
@@ -22,7 +23,51 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - quiz_network
+
+  # Proxy reverso com SSL/TLS
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"     # HTTP (para redirect)
+      - "443:443"   # HTTPS
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/sites/:/etc/nginx/conf.d/:ro
+      - certbot_www:/var/www/certbot/:ro
+      - certbot_conf:/etc/nginx/ssl/:ro
+    depends_on:
+      - valentine-quiz
+    restart: unless-stopped
+    networks:
+      - quiz_network
+
+  # Certbot para SSL automático
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - certbot_www:/var/www/certbot/:rw
+      - certbot_conf:/etc/letsencrypt/:rw
+    depends_on:
+      - nginx
+    command: >-
+      sh -c "
+        trap exit TERM;
+        while :; do
+          certbot renew --webroot --webroot-path=/var/www/certbot --quiet;
+          sleep 12h;
+        done;
+      "
 
 volumes:
   quiz_data:
     driver: local
+  certbot_www:
+    driver: local
+  certbot_conf:
+    driver: local
+
+networks:
+  quiz_network:
+    driver: bridge

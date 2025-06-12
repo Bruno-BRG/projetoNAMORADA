@@ -1,0 +1,63 @@
+# Binários
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Arquivos de teste e debug
+debug_*.go
+test_*.go
+*_debug.go
+*_test_*.go
+fix_*.go
+temp_*.go
+
+# Certificados SSL/TLS
+nginx/ssl/
+*.crt
+*.key
+*.pem
+certbot/
+
+# Database local
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Arquivos de configuração locais
+.env
+.env.local
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependências
+vendor/
+
+# Cache do Go
+*.sum
+
+# Arquivos temporários
+*.tmp
+*.temp
+*~
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Deployment
+deploy.tar.gz
+*.tar.gz
+*.zip

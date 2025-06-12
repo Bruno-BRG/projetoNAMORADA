@@ -82,11 +82,10 @@ func seedDefaultData(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-
 	// Criar usuário visitante padrão
 	_, err = db.Exec(`
 		INSERT OR IGNORE INTO users (username, is_admin) 
-		VALUES ('namorada', FALSE)
+		VALUES ('momo', FALSE)
 	`)
 
 	return err

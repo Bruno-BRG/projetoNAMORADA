@@ -39,7 +39,6 @@ func main() {
 
 	// Handlers
 	h := handlers.New(db)
-
 	// Rotas públicas
 	public := r.Group("/")
 	{
@@ -47,6 +46,7 @@ func main() {
 		public.GET("/login", h.LoginPage)
 		public.POST("/login", h.Login)
 		public.GET("/logout", h.Logout)
+		public.GET("/debug", h.DebugQuizStatus) // Debug sem auth para testar
 	}
 	// Rotas protegidas para visitante
 	visitor := r.Group("/quiz")
@@ -59,7 +59,6 @@ func main() {
 		visitor.POST("/answer", h.SubmitAnswer)
 		visitor.GET("/progress", h.Progress)
 	}
-
 	// Rotas de admin
 	admin := r.Group("/admin")
 	admin.Use(middleware.RequireAdminAuth())
@@ -70,6 +69,7 @@ func main() {
 		admin.POST("/questions", h.CreateQuestion)
 		admin.GET("/questions/:id/edit", h.EditQuestionForm)
 		admin.PUT("/questions/:id", h.UpdateQuestion)
+		admin.POST("/questions/:id", h.UpdateQuestion) // Permite POST também para HTML forms
 		admin.DELETE("/questions/:id", h.DeleteQuestion)
 		admin.GET("/responses", h.ViewResponses)
 	}

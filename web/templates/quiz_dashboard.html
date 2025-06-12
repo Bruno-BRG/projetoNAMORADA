@@ -39,15 +39,17 @@
                         <i class="fas fa-sign-out-alt"></i> Sair
                     </a>
                 </div>
-            </div>
-
-            <!-- Quiz Content Area -->
+            </div>            <!-- Quiz Content Area -->
             <div id="quiz-content" 
                  class="bg-white shadow-2xl"
                  hx-get="/quiz/status" 
                  hx-trigger="load, every 30s"
                  hx-swap="outerHTML">
-                {{template "quiz_content.html" .}}
+                <!-- Conteúdo será carregado via HTMX -->
+                <div class="p-8 text-center">
+                    <i class="fas fa-hourglass-half text-blue-500 text-4xl mb-4"></i>
+                    <p class="text-gray-600">Carregando quiz...</p>
+                </div>
             </div>
 
             <!-- Footer -->
